@@ -3,29 +3,31 @@ import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '@/constants/design';
 import { Container, Card, Button, Input } from '@/components/ui';
-import { blink } from '@/lib/blink';
+import { generateTextWithFallback } from '@/lib/ai';
 
 type Mode = 'explain' | 'summarize';
 
 // Fallback responses for demo purposes
 const generateFallbackResponse = (mode: Mode, input: string): string => {
   if (mode === 'explain') {
-    return `📚 Explanation: ${input.substring(0, 50)}\n\n` +
-      `Here's a simple breakdown of "${input}":\n\n` +
+    return `📚 Explanation of "${input.substring(0, 50)}"\n\n` +
+      `Here's a simple breakdown:\n\n` +
       `• Key Concept 1: This is an important foundational idea\n` +
       `• Key Concept 2: This builds upon the first concept\n` +
-      `• Real-World Example: Think of it like...\n` +
-      `• Why It Matters: Understanding this helps you...\n` +
-      `• Pro Tip: Remember that the main idea is...\n\n` +
-      `Feel free to ask if you need more clarification!`;
+      `• Real-World Example: Think of it like an everyday situation you know\n` +
+      `• Why It Matters: Understanding this helps you grasp related concepts\n` +
+      `• Pro Tip: The main idea is easier to remember when you connect it to what you already know\n\n` +
+      `Feel free to ask if you need more details or examples!`;
   } else {
-    return `📝 Summary:\n\n` +
+    const firstLine = input.split('\n')[0]?.substring(0, 80) || 'Main topic';
+    return `📝 Summary\n\n` +
       `Main Points:\n` +
-      `• ${input.split('\n')[0]?.substring(0, 80) || 'Key point 1'}\n` +
-      `• This is another important takeaway\n` +
-      `• Additional relevant information\n` +
-      `• Final important concept\n\n` +
-      `💡 Key Takeaway: Focus on the main ideas and how they relate to each other.`;
+      `• ${firstLine}\n` +
+      `• This represents another important takeaway from the text\n` +
+      `��� Additional key information to remember\n` +
+      `• Final important concept to understand\n` +
+      `• How these ideas connect together\n\n` +
+      `💡 Key Takeaway: Focus on understanding how these main ideas relate and support each other.`;
   }
 };
 
@@ -35,6 +37,7 @@ export default function LearnScreen() {
   const [result, setResult] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [usedFallback, setUsedFallback] = useState(false);
 
   const handleAction = async () => {
     if (!input.trim()) {
@@ -45,34 +48,34 @@ export default function LearnScreen() {
     setError('');
     setIsProcessing(true);
     setResult('');
+    setUsedFallback(false);
 
     try {
       const prompt = mode === 'explain' 
-        ? `Explain "${input}" in simple terms for a high school student. Use examples and bullet points.`
-        : `Summarize this text concisely with bullet points:\n\n${input}`;
+        ? `Explain the following topic in simple, easy-to-understand terms suitable for a high school student. Use examples, bullet points, and analogies to make it clear:\n\n"${input}"`
+        : `Summarize the following text into key bullet points. Reduce the content by about 50% while keeping all essential facts. Format as bullet points for easy memorization:\n\n"${input}"`;
 
-      try {
-        // Try to call Blink AI
-        const response = await blink.ai.generateText({
-          prompt,
-          maxTokens: 800,
-          temperature: 0.7,
-        });
+      // Call our AI utility function
+      const aiResult = await generateTextWithFallback({ 
+        prompt,
+        maxTokens: 800,
+        temperature: 0.7,
+      });
 
-        if (response?.text) {
-          setResult(response.text);
-        } else {
-          // Fallback if no text returned
-          setResult(generateFallbackResponse(mode, input));
-        }
-      } catch (blinkError) {
-        // If Blink AI fails, use fallback response
-        console.warn('Blink AI unavailable, using demo response:', blinkError);
+      if (aiResult.success && aiResult.text) {
+        console.log('✅ Using API response');
+        setResult(aiResult.text);
+      } else {
+        console.log('⚠️ API failed, using fallback');
+        setError(aiResult.error || 'Could not reach AI service');
         setResult(generateFallbackResponse(mode, input));
+        setUsedFallback(true);
       }
     } catch (err) {
-      console.error('Error:', err);
-      setError('Something went wrong. Please try again.');
+      console.error('Unexpected error:', err);
+      setError('An unexpected error occurred');
+      setResult(generateFallbackResponse(mode, input));
+      setUsedFallback(true);
     } finally {
       setIsProcessing(false);
     }
@@ -82,6 +85,7 @@ export default function LearnScreen() {
     setInput('');
     setResult('');
     setError('');
+    setUsedFallback(false);
   };
 
   return (
@@ -91,14 +95,14 @@ export default function LearnScreen() {
         <View style={styles.modeToggle}>
           <Pressable 
             style={[styles.modeButton, mode === 'explain' && styles.modeButtonActive]} 
-            onPress={() => { setMode('explain'); setResult(''); setError(''); }}
+            onPress={() => { setMode('explain'); setResult(''); setError(''); setUsedFallback(false); }}
           >
             <Ionicons name="bulb-outline" size={20} color={mode === 'explain' ? colors.white : colors.textSecondary} />
             <Text style={[styles.modeButtonText, mode === 'explain' && styles.modeButtonTextActive]}>Explain</Text>
           </Pressable>
           <Pressable 
             style={[styles.modeButton, mode === 'summarize' && styles.modeButtonActive]} 
-            onPress={() => { setMode('summarize'); setResult(''); setError(''); }}
+            onPress={() => { setMode('summarize'); setResult(''); setError(''); setUsedFallback(false); }}
           >
             <Ionicons name="document-text-outline" size={20} color={mode === 'summarize' ? colors.white : colors.textSecondary} />
             <Text style={[styles.modeButtonText, mode === 'summarize' && styles.modeButtonTextActive]}>Summarize</Text>
@@ -142,6 +146,9 @@ export default function LearnScreen() {
                 <Ionicons name="alert-circle" size={20} color="#FF3B30" />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
+              {usedFallback && (
+                <Text style={styles.errorNote}>Showing demo response instead</Text>
+              )}
             </Card.Content>
           </Card>
         )}
@@ -163,6 +170,11 @@ export default function LearnScreen() {
                 <Text style={styles.resultTitle}>
                   {mode === 'explain' ? 'Simple Explanation' : 'Smart Summary'}
                 </Text>
+                {usedFallback && (
+                  <View style={styles.demoBadge}>
+                    <Text style={styles.demoBadgeText}>Demo</Text>
+                  </View>
+                )}
               </View>
             </Card.Header>
             <Card.Content>
@@ -247,11 +259,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   errorText: {
     ...typography.body,
     color: '#FF3B30',
     flex: 1,
+  },
+  errorNote: {
+    ...typography.small,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
   loadingContainer: {
     padding: spacing.xl,
@@ -276,6 +294,18 @@ const styles = StyleSheet.create({
   resultTitle: {
     ...typography.h3,
     color: colors.text,
+    flex: 1,
+  },
+  demoBadge: {
+    backgroundColor: colors.warningTint,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+  },
+  demoBadgeText: {
+    ...typography.tiny,
+    color: colors.warning,
+    fontWeight: '600',
   },
   resultText: {
     ...typography.body,
