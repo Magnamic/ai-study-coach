@@ -24,7 +24,7 @@ const generateFallbackResponse = (mode: Mode, input: string): string => {
       `Main Points:\n` +
       `• ${firstLine}\n` +
       `• This represents another important takeaway from the text\n` +
-      `��� Additional key information to remember\n` +
+      `• Additional key information to remember\n` +
       `• Final important concept to understand\n` +
       `• How these ideas connect together\n\n` +
       `💡 Key Takeaway: Focus on understanding how these main ideas relate and support each other.`;
