@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '@/constants/design';
 import { Container, Card, Button, Input } from '@/components/ui';
-import { generateTextWithFallback } from '@/lib/ai';
+import { generateTextWithOpenAI } from '@/lib/openai';
 
 type Mode = 'explain' | 'summarize';
 
@@ -13,7 +13,6 @@ export default function LearnScreen() {
   const [result, setResult] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
-  const [usedFallback, setUsedFallback] = useState(false);
 
   const handleAction = async () => {
     if (!input.trim()) {
@@ -24,29 +23,21 @@ export default function LearnScreen() {
     setError('');
     setIsProcessing(true);
     setResult('');
-    setUsedFallback(false);
-
-    // Add a small delay to show the loading state
-    await new Promise(resolve => setTimeout(resolve, 500));
 
     try {
       const prompt = mode === 'explain' 
         ? `Explain the following topic in simple, easy-to-understand terms suitable for a high school student. Use examples, bullet points, and analogies to make it clear:\n\n"${input}"`
         : `Summarize the following text into key bullet points. Reduce the content by about 50% while keeping all essential facts. Format as bullet points for easy memorization:\n\n"${input}"`;
 
-      const aiResult = await generateTextWithFallback({ 
+      const aiResult = await generateTextWithOpenAI({ 
         prompt,
         maxTokens: 800,
         temperature: 0.7,
       });
 
-      if (aiResult.text) {
+      if (aiResult.success && aiResult.text) {
         console.log('✅ Generated response');
         setResult(aiResult.text);
-        setUsedFallback(aiResult.source === 'fallback');
-        if (aiResult.source === 'fallback') {
-          setError('Demo mode: Using generated response');
-        }
       } else {
         setError(aiResult.error || 'Could not generate response');
       }
@@ -62,7 +53,6 @@ export default function LearnScreen() {
     setInput('');
     setResult('');
     setError('');
-    setUsedFallback(false);
   };
 
   return (
@@ -126,7 +116,7 @@ export default function LearnScreen() {
           <Card style={styles.infoCard}>
             <Card.Content>
               <View style={styles.errorContent}>
-                <Ionicons name="information-circle" size={20} color={colors.info} />
+                <Ionicons name="information-circle" size={20} color={colors.error} />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             </Card.Content>
@@ -150,11 +140,6 @@ export default function LearnScreen() {
                 <Text style={styles.resultTitle}>
                   {mode === 'explain' ? 'Explanation' : 'Summary'}
                 </Text>
-                {usedFallback && (
-                  <View style={styles.demoBadge}>
-                    <Text style={styles.demoBadgeText}>Demo</Text>
-                  </View>
-                )}
               </View>
             </Card.Header>
             <Card.Content>
@@ -244,7 +229,7 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     backgroundColor: colors.backgroundSecondary,
-    borderColor: colors.info,
+    borderColor: colors.error,
     borderWidth: 1,
     marginBottom: spacing.xl,
   },
@@ -255,7 +240,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.body,
-    color: colors.info,
+    color: colors.error,
     flex: 1,
   },
   loadingContainer: {
@@ -282,17 +267,6 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text,
     flex: 1,
-  },
-  demoBadge: {
-    backgroundColor: colors.warningTint,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-  },
-  demoBadgeText: {
-    ...typography.tiny,
-    color: colors.warning,
-    fontWeight: '600',
   },
   resultText: {
     ...typography.body,
