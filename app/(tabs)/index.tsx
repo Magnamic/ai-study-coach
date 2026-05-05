@@ -4,43 +4,35 @@ import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '@/constants/design';
 import { Container, Card, Button } from '@/components/ui';
-import { blink } from '@/lib/blink';
+import { generateTextWithOpenAI } from '@/lib/openai';
 
 export default function Dashboard() {
-  const { data: tasks, isLoading: tasksLoading, refetch: refetchTasks } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => blink.db.tasks.list({ limit: 5 }),
-  });
-
   const { data: motivation, isLoading: motivationLoading, refetch: refetchMotivation } = useQuery({
     queryKey: ['motivation'],
     queryFn: async () => {
-      const { text } = await blink.ai.generateText({
-        prompt: "Give me a short, powerful motivational message for a Grade 11 student who has study goals.",
+      const result = await generateTextWithOpenAI({
+        prompt: "Give me a short, powerful motivational message for a high school student who wants to succeed. Keep it to 1-2 sentences.",
         maxTokens: 50
       });
-      return text;
+      return result.success ? result.text : 'You have the power to achieve your goals. Start today!';
     },
     staleTime: 1000 * 60 * 60, // 1 hour
   });
 
   const onRefresh = React.useCallback(() => {
-    refetchTasks();
     refetchMotivation();
-  }, [refetchTasks, refetchMotivation]);
-
-  const pendingTasks = tasks?.filter(t => t.status === 'pending') || [];
+  }, [refetchMotivation]);
 
   return (
     <Container safeArea edges={['bottom']}>
       <ScrollView 
         style={styles.container}
         refreshControl={
-          <RefreshControl refreshing={tasksLoading} onRefresh={onRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={motivationLoading} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         <View style={styles.header}>
-          <Text style={styles.greeting}>Hey Student!</Text>
+          <Text style={styles.greeting}>Welcome Back!</Text>
           <Text style={styles.subGreeting}>Let's make today productive.</Text>
         </View>
 
@@ -55,35 +47,11 @@ export default function Dashboard() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Upcoming Tasks</Text>
-            <Text style={styles.taskCount}>{pendingTasks.length} pending</Text>
+            <Text style={styles.sectionTitle}>Learn & Master</Text>
           </View>
-
-          {pendingTasks.length === 0 && !tasksLoading ? (
-            <Card style={styles.emptyCard}>
-              <Card.Content>
-                <Text style={styles.emptyText}>All caught up! Great job.</Text>
-              </Card.Content>
-            </Card>
-          ) : (
-            pendingTasks.map((task: any) => (
-              <Card key={task.id} style={styles.taskCard} variant="flat">
-                <Card.Content style={styles.taskCardContent}>
-                  <View style={styles.taskInfo}>
-                    <Text style={styles.taskTitle}>{task.title}</Text>
-                    <View style={styles.taskMeta}>
-                      <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-                      <Text style={styles.taskDeadline}>{task.deadline}</Text>
-                      <View style={[styles.badge, { backgroundColor: getDifficultyColor(task.difficulty) }]}>
-                        <Text style={styles.badgeText}>Level {task.difficulty}</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-                </Card.Content>
-              </Card>
-            ))
-          )}
+          <Text style={styles.sectionDescription}>
+            Use our AI Study Coach to explain topics, summarize notes, and create study plans tailored to your needs.
+          </Text>
         </View>
 
         <View style={styles.quickActions}>
@@ -94,29 +62,33 @@ export default function Dashboard() {
               style={styles.actionButton}
               onPress={() => {}}
             >
-              <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-              <Text style={styles.actionButtonText}> New Task</Text>
+              <Ionicons name="bulb-outline" size={20} color={colors.primary} />
+              <Text style={styles.actionButtonText}> Explain</Text>
             </Button>
             <Button 
               variant="outline" 
               style={styles.actionButton}
               onPress={() => {}}
             >
-              <Ionicons name="book-outline" size={20} color={colors.primary} />
-              <Text style={styles.actionButtonText}> Learn</Text>
+              <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+              <Text style={styles.actionButtonText}> Summarize</Text>
             </Button>
           </View>
         </View>
+
+        <Card style={styles.featureCard}>
+          <Card.Content>
+            <Ionicons name="flash" size={24} color={colors.accent} style={styles.featureIcon} />
+            <Text style={styles.featureTitle}>Powered by AI</Text>
+            <Text style={styles.featureDescription}>
+              Our AI Study Coach uses advanced language models to provide personalized explanations, summaries, and study plans designed for high school students.
+            </Text>
+          </Card.Content>
+        </Card>
       </ScrollView>
     </Container>
   );
 }
-
-const getDifficultyColor = (diff: number) => {
-  if (diff >= 4) return colors.error;
-  if (diff >= 3) return colors.warning;
-  return colors.success;
-};
 
 const styles = StyleSheet.create({
   container: {
@@ -152,69 +124,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: spacing.md,
   },
   sectionTitle: {
     ...typography.h3,
     color: colors.text,
   },
-  taskCount: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  taskCard: {
-    marginBottom: spacing.sm,
-    backgroundColor: colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: colors.borderDarkMode,
-  },
-  taskCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  taskInfo: {
-    flex: 1,
-  },
-  taskTitle: {
-    ...typography.bodyBold,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  taskMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  taskDeadline: {
-    ...typography.small,
-    color: colors.textSecondary,
-    marginLeft: 4,
-    marginRight: spacing.md,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-  },
-  badgeText: {
-    ...typography.tiny,
-    color: colors.white,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    backgroundColor: colors.backgroundTertiary,
-    opacity: 0.6,
-  },
-  emptyText: {
+  sectionDescription: {
     ...typography.body,
     color: colors.textSecondary,
-    textAlign: 'center',
+    lineHeight: 22,
   },
   quickActions: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xl,
   },
   actionGrid: {
     flexDirection: 'row',
@@ -230,5 +152,26 @@ const styles = StyleSheet.create({
   actionButtonText: {
     ...typography.bodyBold,
     color: colors.text,
+  },
+  featureCard: {
+    backgroundColor: colors.backgroundSecondary,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    marginBottom: spacing.xxl,
+    alignItems: 'center',
+  },
+  featureIcon: {
+    marginBottom: spacing.sm,
+  },
+  featureTitle: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  featureDescription: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
