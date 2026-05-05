@@ -1,38 +1,39 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Modal, Pressable } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '@/constants/design';
 import { Container, Card, Button, Input } from '@/components/ui';
-import { blink } from '@/lib/blink';
+import { generateTextWithOpenAI } from '@/lib/openai';
+
+// Mock data for tasks - in production this would come from a database
+const mockTasks = [
+  { id: '1', title: 'Biology Chapter 3', deadline: '2026-05-10', difficulty: 3, priority: 1, status: 'pending' },
+  { id: '2', title: 'Math Homework Set 5', deadline: '2026-05-08', difficulty: 4, priority: 2, status: 'pending' },
+  { id: '3', title: 'Essay on History', deadline: '2026-05-15', difficulty: 3, priority: 3, status: 'pending' },
+];
 
 export default function TasksScreen() {
-  const queryClient = useQueryClient();
+  const [tasks, setTasks] = useState(mockTasks);
   const [modalVisible, setModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDeadline, setNewDeadline] = useState('');
   const [newDifficulty, setNewDifficulty] = useState(3);
   const [isPrioritizing, setIsPrioritizing] = useState(false);
 
-  const { data: tasks, isLoading: tasksLoading, refetch: refetchTasks } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => blink.db.tasks.list({ sort: { priority: 'asc', deadline: 'asc' } }),
-  });
-
   const addTaskMutation = useMutation({
     mutationFn: async () => {
       const id = Math.random().toString(36).substr(2, 9);
-      await blink.db.tasks.create({
+      setTasks([...tasks, {
         id,
-        user_id: 'demo-user',
         title: newTitle,
         deadline: newDeadline,
         difficulty: newDifficulty,
         status: 'pending',
-      });
+        priority: 0,
+      }]);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setModalVisible(false);
       setNewTitle('');
       setNewDeadline('');
@@ -42,64 +43,52 @@ export default function TasksScreen() {
 
   const completeTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      await blink.db.tasks.update({
-        id,
-        status: 'completed',
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setTasks(tasks.map(t => t.id === id ? { ...t, status: 'completed' } : t));
     },
   });
 
   const deleteTaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      await blink.db.tasks.remove({ id });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      setTasks(tasks.filter(t => t.id !== id));
     },
   });
 
   const prioritizeWithAIMutation = useMutation({
     mutationFn: async () => {
       setIsPrioritizing(true);
-      const pendingTasks = tasks?.filter(t => t.status === 'pending') || [];
+      const pendingTasks = tasks.filter(t => t.status === 'pending');
       if (pendingTasks.length === 0) return;
 
-      const { object } = await blink.ai.generateObject({
-        prompt: `Based on these tasks for a high school student, assign a numerical priority (1 being highest) to each. Consider difficulty (1-5) and deadline.
+      const prompt = `Based on these tasks for a high school student, assign a numerical priority (1 being highest priority) to each. Consider difficulty (1-5) and deadline urgency.
 
-Tasks: ${JSON.stringify(pendingTasks.map(t => ({ id: t.id, title: t.title, difficulty: t.difficulty, deadline: t.deadline })))}`,
-        schema: {
-          type: 'object',
-          properties: {
-            priorities: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  priority: { type: 'number' }
-                },
-                required: ['id', 'priority']
-              }
-            }
-          },
-          required: ['priorities']
-        }
+Tasks:
+${pendingTasks.map(t => `- "${t.title}" (difficulty: ${t.difficulty}/5, deadline: ${t.deadline})`).join('\n')}
+
+Respond with ONLY a JSON array like this (no other text):
+[{"id":"task_id","priority":1},{"id":"task_id","priority":2}]`;
+
+      const result = await generateTextWithOpenAI({ 
+        prompt,
+        maxTokens: 500,
+        temperature: 0.3,
       });
 
-      // Update all tasks with new priority
-      for (const p of (object as any).priorities) {
-        await blink.db.tasks.update({
-          id: p.id,
-          priority: p.priority,
-        });
+      if (result.success && result.text) {
+        try {
+          // Extract JSON from response
+          const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            const priorities = JSON.parse(jsonMatch[0]);
+            const updatedTasks = tasks.map(task => {
+              const priorityData = priorities.find((p: any) => p.id === task.id);
+              return priorityData ? { ...task, priority: priorityData.priority } : task;
+            });
+            setTasks(updatedTasks);
+          }
+        } catch (e) {
+          console.error('Error parsing AI response:', e);
+        }
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setIsPrioritizing(false);
     },
     onError: () => setIsPrioritizing(false),
@@ -127,14 +116,9 @@ Tasks: ${JSON.stringify(pendingTasks.map(t => ({ id: t.id, title: t.title, diffi
         </Button>
       </View>
 
-      <ScrollView 
-        style={styles.container}
-        refreshControl={
-          <RefreshControl refreshing={tasksLoading} onRefresh={refetchTasks} tintColor={colors.primary} />
-        }
-      >
+      <ScrollView style={styles.container}>
         <View style={styles.listContainer}>
-          {tasks?.map((task: any) => (
+          {tasks.map((task: any) => (
             <Card key={task.id} style={[styles.taskCard, task.status === 'completed' && styles.completedCard]}>
               <Card.Content style={styles.taskCardContent}>
                 <Pressable 
@@ -169,7 +153,7 @@ Tasks: ${JSON.stringify(pendingTasks.map(t => ({ id: t.id, title: t.title, diffi
             </Card>
           ))}
 
-          {(!tasks || tasks.length === 0) && !tasksLoading && (
+          {(!tasks || tasks.length === 0) && (
             <Text style={styles.noTasks}>No tasks found. Add your first task!</Text>
           )}
         </View>
@@ -219,7 +203,7 @@ Tasks: ${JSON.stringify(pendingTasks.map(t => ({ id: t.id, title: t.title, diffi
               <Button 
                 variant="primary" 
                 onPress={() => addTaskMutation.mutate()}
-                disabled={!newTitle || addTaskMutation.isPending}
+                disabled={!newTitle}
               >
                 Create
               </Button>
