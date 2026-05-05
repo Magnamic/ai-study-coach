@@ -4,53 +4,35 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '@/constants/design';
 import { Container, Card, Button, Input, Avatar } from '@/components/ui';
-import { blink } from '@/lib/blink';
+import { generateTextWithOpenAI } from '@/lib/openai';
 
 export default function ProfileScreen() {
   const queryClient = useQueryClient();
   const [availableTime, setAvailableTime] = useState('');
   const [suggestion, setSuggestion] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
-
-  const { data: profile, isLoading: profileLoading } = useQuery({
-    queryKey: ['profile'],
-    queryFn: async () => {
-      const list = await blink.db.user_profiles.list({ where: { user_id: 'demo-user' } });
-      return list[0] || null;
-    },
-  });
-
-  const { data: tasks } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => blink.db.tasks.list({ where: { status: 'pending' } }),
-  });
-
-  const updateProfileMutation = useMutation({
-    mutationFn: async (data: { grade?: string; study_goals?: string }) => {
-      if (profile) {
-        await blink.db.user_profiles.update({ id: profile.id, ...data });
-      } else {
-        await blink.db.user_profiles.create({
-          id: Math.random().toString(36).substr(2, 9),
-          user_id: 'demo-user',
-          ...data
-        });
-      }
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile'] }),
-  });
+  const [grade, setGrade] = useState('');
+  const [studyGoals, setStudyGoals] = useState('');
 
   const suggestStudyPlanMutation = useMutation({
     mutationFn: async () => {
       setIsSuggesting(true);
-      const pendingTasks = tasks || [];
-      const prompt = `I am a ${profile?.grade || 'high school'} student with ${availableTime} minutes available to study. 
-      My pending tasks are: ${JSON.stringify(pendingTasks.map(t => t.title))}. 
-      Give me a specific study plan for these ${availableTime} minutes. 
-      Format with bullet points and be encouraging.`;
+      const prompt = `I am a ${grade || 'high school'} student with ${availableTime} minutes available to study.
+      My study goals are: ${studyGoals || 'general learning'}.
+      Give me a specific, personalized study plan for these ${availableTime} minutes.
+      Format with bullet points and be encouraging and motivating.`;
 
-      const { text } = await blink.ai.generateText({ prompt, maxTokens: 300 });
-      setSuggestion(text);
+      const result = await generateTextWithOpenAI({ 
+        prompt, 
+        maxTokens: 300 
+      });
+      
+      if (result.success && result.text) {
+        setSuggestion(result.text);
+      } else {
+        setSuggestion('');
+        // Error will be handled by the component
+      }
       setIsSuggesting(false);
     },
     onError: () => setIsSuggesting(false),
@@ -61,31 +43,31 @@ export default function ProfileScreen() {
       <ScrollView style={styles.container}>
         <View style={styles.profileHeader}>
           <Avatar 
-            name="Demo Student" 
+            name="Student" 
             size="xl" 
             containerStyle={styles.avatar}
           />
-          <Text style={styles.profileName}>Demo Student</Text>
-          <Text style={styles.profileRole}>{profile?.grade || 'Grade Not Set'}</Text>
+          <Text style={styles.profileName}>AI Study Coach</Text>
+          <Text style={styles.profileRole}>Your Personal Learning Assistant</Text>
         </View>
 
         <Card style={styles.sectionCard}>
           <Card.Header>
-            <Text style={styles.sectionTitle}>Preferences</Text>
+            <Text style={styles.sectionTitle}>Student Profile</Text>
           </Card.Header>
           <Card.Content>
             <Input
               label="Grade / Year"
-              placeholder="e.g., Grade 11"
-              value={profile?.grade || ''}
-              onChangeText={(text) => updateProfileMutation.mutate({ grade: text })}
+              placeholder="e.g., Grade 11, Junior"
+              value={grade}
+              onChangeText={setGrade}
               containerStyle={styles.input}
             />
             <Input
               label="Study Goals"
-              placeholder="e.g., Improve Math, Stay organized"
-              value={profile?.study_goals || ''}
-              onChangeText={(text) => updateProfileMutation.mutate({ study_goals: text })}
+              placeholder="e.g., Improve Math, Prepare for exams"
+              value={studyGoals}
+              onChangeText={setStudyGoals}
               multiline
               containerStyle={styles.input}
             />
@@ -100,9 +82,9 @@ export default function ProfileScreen() {
             </View>
           </Card.Header>
           <Card.Content>
-            <Text style={styles.label}>How many minutes do you have right now?</Text>
+            <Text style={styles.label}>How many minutes do you have to study?</Text>
             <Input
-              placeholder="e.g., 45, 90"
+              placeholder="e.g., 45, 90, 120"
               keyboardType="numeric"
               value={availableTime}
               onChangeText={setAvailableTime}
@@ -112,14 +94,14 @@ export default function ProfileScreen() {
               variant="primary" 
               onPress={() => suggestStudyPlanMutation.mutate()}
               loading={isSuggesting}
-              disabled={!availableTime}
+              disabled={!availableTime || isSuggesting}
             >
-              Generate Plan
+              Generate AI Study Plan
             </Button>
 
             {suggestion ? (
               <View style={styles.suggestionContainer}>
-                <Text style={styles.suggestionTitle}>Your AI Study Plan:</Text>
+                <Text style={styles.suggestionTitle}>Your Personalized Study Plan:</Text>
                 <Text style={styles.suggestionText}>{suggestion}</Text>
               </View>
             ) : null}
@@ -127,8 +109,8 @@ export default function ProfileScreen() {
         </Card>
 
         <View style={styles.footer}>
-          <Button variant="ghost" onPress={() => {}}>Sign Out</Button>
-          <Text style={styles.versionText}>AI Study Coach v1.0.0</Text>
+          <Button variant="ghost" onPress={() => {}}>Settings</Button>
+          <Text style={styles.versionText}>AI Study Coach v2.0</Text>
         </View>
       </ScrollView>
     </Container>
