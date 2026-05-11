@@ -16,7 +16,8 @@ export interface AIGenerationResult {
   source: 'api' | 'error';
 }
 
-const OPENAI_API_KEY = 'sk-ZrYgMJPs0Au52GitcmPbkkTIQMk9aFnr2LDGaWVFUyndLpyg';
+// Read the API key from environment variables
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 /**
@@ -31,6 +32,11 @@ export async function generateTextWithOpenAI(
   console.log('Prompt length:', prompt.length);
 
   try {
+    // Validate environment variables
+    if (!OPENAI_API_KEY) {
+      throw new Error('OpenAI API key is missing. Please set the OPENAI_API_KEY environment variable.');
+    }
+
     // Validate input
     if (!prompt || prompt.trim().length === 0) {
       throw new Error('Prompt cannot be empty');
