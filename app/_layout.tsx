@@ -19,7 +19,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <View style={{ flex: 1, position: 'relative' }}>
+      <View style={{ flex: 1 }}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(tabs)" />
@@ -29,12 +29,13 @@ export default function RootLayout() {
         <View
           style={{
             position: 'absolute',
-            top: 16,
-            right: 16,
+            top: 12,
+            right: 12,
             zIndex: 999,
-            width: 100,
-            height: 100,
+            width: 90,
+            height: 90,
           }}
+          pointerEvents="none"
         >
           <Image
             source={require('@/assets/proud-of-uae.png')}
